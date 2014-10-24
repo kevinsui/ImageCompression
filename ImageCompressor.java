@@ -42,8 +42,10 @@ public class ImageCompressor {
     JFrame frame = new JFrame();
     if (n == -1) {
       for (int i = 1; i <= 64; i++) {
+        System.out.println("Iteration: " + i);
         displayAnalysis(y, cb, cr, i*4096, frame);
       }
+      System.out.println("Finished!");
     } else {
       displayAnalysis(y, cb, cr, n, frame);
     }
@@ -423,8 +425,7 @@ public class ImageCompressor {
   }
 
   public static void displayAnalysis(int[] y, int[] cb, int[] cr, int n, JFrame frame) {
-    // perform 64 iterations of DCT vs DWT
-    System.out.println("Coefficients: " + n);
+    // perform analysis of DCT vs DWT
     int m = n/4096;
     // get 8x8 blocks for DCT
     final ArrayList<int[][]> yBlocks = getBlocks(y);
