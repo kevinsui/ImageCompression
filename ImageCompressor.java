@@ -19,9 +19,7 @@ public class ImageCompressor {
     int n = Integer.parseInt(args[1]);
     int m = n/4096;
     // Read in RGB file
-    System.out.println("Retrieving image...");
     BufferedImage image = readImage(fileName);
-    System.out.println("Converting image to YCbCr space...");
     int[] ycbcr = convertToYCbCr(image);
     // Extract Y from YCbCr
     int[] y = new int[WIDTH*HEIGHT];
@@ -41,94 +39,14 @@ public class ImageCompressor {
       cr[i] = ycbcr[i + offset];
     }
     // Perform progressive analysis and finish program if specified in arguments
-    if (n == -1) {
-      progressiveAnalysis(y, cb, cr);
-      return;
-    }
-    // BEGIN DCT
-    System.out.println("BEGIN DCT");
-    // Divide into 8x8 blocks for each channel
-    System.out.println("Dividing YCbCr channels into 8x8 blocks...");
-    ArrayList<int[][]> yBlocks = getBlocks(y);
-    ArrayList<int[][]> cbBlocks = getBlocks(cb);
-    ArrayList<int[][]> crBlocks = getBlocks(cr);
-    // Perform DCT for each channel
-    System.out.println("Running DCT on each block...");
-    ArrayList<double[][]> yDCT = encodeDCT(yBlocks);
-    ArrayList<double[][]> cbDCT = encodeDCT(cbBlocks);
-    ArrayList<double[][]> crDCT = encodeDCT(crBlocks);
-    // Perform IDCT for each channel to get original
-    System.out.println("Running Inverse DCT on each block...");
-    ArrayList<int[][]> yIDCT = decodeDCT(yDCT, m);
-    ArrayList<int[][]> cbIDCT = decodeDCT(cbDCT, m);
-    ArrayList<int[][]> crIDCT = decodeDCT(crDCT, m);
-    // Combine blocks back into single array for each channel
-    System.out.println("Combining blocks into decoded YCbCr array...");
-    int[] newY = combineBlocks(yIDCT);
-    int[] newCb = combineBlocks(cbIDCT);
-    int[] newCr = combineBlocks(crIDCT);
-    int[] idctYCbCr = new int[3*WIDTH*HEIGHT];
-    // Add y chanel to new array
-    int index = 0;
-    for (int i = 0; i < WIDTH*HEIGHT; i++) {
-      idctYCbCr[index] = newY[i];
-      index ++;
-    }
-    // Add cb channel to new array
-    for (int i = 0; i < WIDTH*HEIGHT; i++) {
-      idctYCbCr[index] = newCb[i];
-      index ++;
-    }
-    // Add cr channel to new array
-    for (int i = 0; i < WIDTH*HEIGHT; i++) {
-      idctYCbCr[index] = newCr[i];
-      index ++;
-    }
-    // BEGIN DWT
-    System.out.println("BEGIN DWT");
-    System.out.println("Running DWT on each channel...");
-    double[][] yDWT = encodeDWT(y);
-    double[][] cbDWT = encodeDWT(cb);
-    double[][] crDWT = encodeDWT(cr);
-    System.out.println("Running Inverse DWT on each channel...");
-    int[] yIDWT = decodeDWT(yDWT, n);
-    int[] cbIDWT = decodeDWT(cbDWT, n);
-    int[] crIDWT = decodeDWT(crDWT, n);
-    // Combine channels back into single array
-    System.out.println("Combining channels into decoded YCbCr array...");
-    int[] idwtYCbCr = new int[3*WIDTH*HEIGHT];
-    // Add y chanel to new array
-    index = 0;
-    for (int i = 0; i < WIDTH*HEIGHT; i++) {
-      idwtYCbCr[index] = yIDWT[i];
-      index ++;
-    }
-    // Add cb channel to new array
-    for (int i = 0; i < WIDTH*HEIGHT; i++) {
-      idwtYCbCr[index] = cbIDWT[i];
-      index ++;
-    }
-    // Add cr channel to new array
-    for (int i = 0; i < WIDTH*HEIGHT; i++) {
-      idwtYCbCr[index] = crIDWT[i];
-      index ++;
-    }
-    // END DWT
-    // Transform color space back to RGB
-    System.out.println("Converting decoded results to RGB space...");
-    BufferedImage decodedImageDCT = convertToRGB(idctYCbCr);
-    BufferedImage decodedImageDWT = convertToRGB(idwtYCbCr);
-    // Display decoded image into a jframe
-    System.out.println("Displaying results!");
     JFrame frame = new JFrame();
-    JLabel dctLabel = new JLabel(new ImageIcon(decodedImageDCT));
-    JLabel dwtLabel = new JLabel(new ImageIcon(decodedImageDWT));
-    JPanel panel = new JPanel();
-    panel.add("DCT", new JScrollPane(dctLabel));
-    panel.add("DWT", new JScrollPane(dwtLabel));
-    frame.getContentPane().add(panel);
-    frame.pack();
-    frame.setVisible(true);
+    if (n == -1) {
+      for (int i = 1; i <= 64; i++) {
+        displayAnalysis(y, cb, cr, i*4096, frame);
+      }
+    } else {
+      displayAnalysis(y, cb, cr, n, frame);
+    }
   }
 
   public static BufferedImage readImage (String fileName) {
@@ -250,21 +168,21 @@ public class ImageCompressor {
 
   public static ArrayList<double[][]> encodeDCT(ArrayList<int[][]> blocks) {
     ArrayList<double[][]> dct = new ArrayList<double[][]>();
-    for (int[][] block: blocks) {
-      dct.add(forwardDCT(block));
-    }
-    return dct;
-  }
-
-  public static double[][] forwardDCT(int[][] block) {
-    double[][] dct = new double[8][8];
-    double[][] cos = new double[8][8];
     // prepopulate list of cosine values
+    double[][] cos = new double[8][8];
     for (int u = 0; u < 8; u++) {
       for (int x = 0; x < 8; x++) {
         cos[u][x] = Math.cos((2*x+1)*u*Math.PI/16);
       }
     }
+    for (int[][] block: blocks) {
+      dct.add(forwardDCT(block, cos));
+    }
+    return dct;
+  }
+
+  public static double[][] forwardDCT(int[][] block, double[][] cos) {
+    double[][] dct = new double[8][8];
     // loop for u
     for (int u = 0; u < 8; u++) {
       double cu = 1;
@@ -323,23 +241,23 @@ public class ImageCompressor {
         }
       }
     }
-    // run IDCT on each block
-    ArrayList<int[][]> idct = new ArrayList<int[][]>();
-    for (double[][] block : blocks) {
-      idct.add(inverseDCT(block));
-    }
-    return idct;
-  }
-
-  public static int[][] inverseDCT(double[][] block) {
-    int original[][] = new int[8][8];
-    double[][] cos = new double[8][8];
     // prepopulate list of cosine values
+    double[][] cos = new double[8][8];
     for (int u = 0; u < 8; u++) {
       for (int x = 0; x < 8; x++) {
         cos[u][x] = Math.cos((2*x+1)*u*Math.PI/16);
       }
     }
+    // run IDCT on each block
+    ArrayList<int[][]> idct = new ArrayList<int[][]>();
+    for (double[][] block : blocks) {
+      idct.add(inverseDCT(block, cos));
+    }
+    return idct;
+  }
+
+  public static int[][] inverseDCT(double[][] block, double[][] cos) {
+    int original[][] = new int[8][8];
     // loop for x
     for (int x = 0; x < 8; x++) {
       // loop for y
@@ -504,83 +422,78 @@ public class ImageCompressor {
     return output;
   }
 
-  public static void progressiveAnalysis(int[] y, int[] cb, int[] cr) {
-    JFrame frame = new JFrame();
+  public static void displayAnalysis(int[] y, int[] cb, int[] cr, int n, JFrame frame) {
     // perform 64 iterations of DCT vs DWT
-    System.out.println("Performing progressive analysis...");
-    for (int m = 1; m <= 64; m++) {
-      System.out.println("Iteration " + m);
-      int n = m*4096;
-      // get 8x8 blocks for DCT
-      final ArrayList<int[][]> yBlocks = getBlocks(y);
-      final ArrayList<int[][]> cbBlocks = getBlocks(cb);
-      final ArrayList<int[][]> crBlocks = getBlocks(cr);
-      // perform DCT for each channel
-      final ArrayList<double[][]> yDCT = encodeDCT(yBlocks);
-      final ArrayList<double[][]> cbDCT = encodeDCT(cbBlocks);
-      final ArrayList<double[][]> crDCT = encodeDCT(crBlocks);
-      // perform DWT for each channel
-      final double[][] yDWT = encodeDWT(y);
-      final double[][] cbDWT = encodeDWT(cb);
-      final double[][] crDWT = encodeDWT(cr);
-      // inverse DCT
-      ArrayList<int[][]> yIDCT = decodeDCT(yDCT, m);
-      ArrayList<int[][]> cbIDCT = decodeDCT(cbDCT, m);
-      ArrayList<int[][]> crIDCT = decodeDCT(crDCT, m);
-      int[] newY = combineBlocks(yIDCT);
-      int[] newCb = combineBlocks(cbIDCT);
-      int[] newCr = combineBlocks(crIDCT);
-      int[] idctYCbCr = new int[3*WIDTH*HEIGHT];
-      int index = 0;
-      for (int i = 0; i < WIDTH*HEIGHT; i++) {
-        idctYCbCr[index] = newY[i];
-        index ++;
-      }
-      for (int i = 0; i < WIDTH*HEIGHT; i++) {
-        idctYCbCr[index] = newCb[i];
-        index ++;
-      }
-      for (int i = 0; i < WIDTH*HEIGHT; i++) {
-        idctYCbCr[index] = newCr[i];
-        index ++;
-      }
-      // inverse DWT
-      int[] yIDWT = decodeDWT(yDWT, n);
-      int[] cbIDWT = decodeDWT(cbDWT, n);
-      int[] crIDWT = decodeDWT(crDWT, n);
-      int[] idwtYCbCr = new int[3*WIDTH*HEIGHT];
-      index = 0;
-      for (int i = 0; i < WIDTH*HEIGHT; i++) {
-        idwtYCbCr[index] = yIDWT[i];
-        index ++;
-      }
-      for (int i = 0; i < WIDTH*HEIGHT; i++) {
-        idwtYCbCr[index] = cbIDWT[i];
-        index ++;
-      }
-      for (int i = 0; i < WIDTH*HEIGHT; i++) {
-        idwtYCbCr[index] = crIDWT[i];
-        index ++;
-      }
-      // display results side by side
-      BufferedImage decodedImageDCT = convertToRGB(idctYCbCr);
-      BufferedImage decodedImageDWT = convertToRGB(idwtYCbCr);
-      // Display decoded image into a jframe
-      JLabel dctLabel = new JLabel(new ImageIcon(decodedImageDCT));
-      JLabel dwtLabel = new JLabel(new ImageIcon(decodedImageDWT));
-      JPanel panel = new JPanel();
-      panel.add("DCT", new JScrollPane(dctLabel));
-      panel.add("DWT", new JScrollPane(dwtLabel));
-      frame.getContentPane().add(panel);
-      frame.pack();
-      frame.setVisible(true);
-      try {
-        Thread.sleep(1200); 
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
+    System.out.println("Coefficients: " + n);
+    int m = n/4096;
+    // get 8x8 blocks for DCT
+    final ArrayList<int[][]> yBlocks = getBlocks(y);
+    final ArrayList<int[][]> cbBlocks = getBlocks(cb);
+    final ArrayList<int[][]> crBlocks = getBlocks(cr);
+    // perform DCT for each channel
+    final ArrayList<double[][]> yDCT = encodeDCT(yBlocks);
+    final ArrayList<double[][]> cbDCT = encodeDCT(cbBlocks);
+    final ArrayList<double[][]> crDCT = encodeDCT(crBlocks);
+    // perform DWT for each channel
+    final double[][] yDWT = encodeDWT(y);
+    final double[][] cbDWT = encodeDWT(cb);
+    final double[][] crDWT = encodeDWT(cr);
+    // inverse DCT
+    ArrayList<int[][]> yIDCT = decodeDCT(yDCT, m);
+    ArrayList<int[][]> cbIDCT = decodeDCT(cbDCT, m);
+    ArrayList<int[][]> crIDCT = decodeDCT(crDCT, m);
+    int[] newY = combineBlocks(yIDCT);
+    int[] newCb = combineBlocks(cbIDCT);
+    int[] newCr = combineBlocks(crIDCT);
+    int[] idctYCbCr = new int[3*WIDTH*HEIGHT];
+    int index = 0;
+    for (int i = 0; i < WIDTH*HEIGHT; i++) {
+      idctYCbCr[index] = newY[i];
+      index ++;
     }
-    System.out.println("Finished!");
+    for (int i = 0; i < WIDTH*HEIGHT; i++) {
+      idctYCbCr[index] = newCb[i];
+      index ++;
+    }
+    for (int i = 0; i < WIDTH*HEIGHT; i++) {
+      idctYCbCr[index] = newCr[i];
+      index ++;
+    }
+    // inverse DWT
+    int[] yIDWT = decodeDWT(yDWT, n);
+    int[] cbIDWT = decodeDWT(cbDWT, n);
+    int[] crIDWT = decodeDWT(crDWT, n);
+    int[] idwtYCbCr = new int[3*WIDTH*HEIGHT];
+    index = 0;
+    for (int i = 0; i < WIDTH*HEIGHT; i++) {
+      idwtYCbCr[index] = yIDWT[i];
+      index ++;
+    }
+    for (int i = 0; i < WIDTH*HEIGHT; i++) {
+      idwtYCbCr[index] = cbIDWT[i];
+      index ++;
+    }
+    for (int i = 0; i < WIDTH*HEIGHT; i++) {
+      idwtYCbCr[index] = crIDWT[i];
+      index ++;
+    }
+    // display results side by side
+    BufferedImage decodedImageDCT = convertToRGB(idctYCbCr);
+    BufferedImage decodedImageDWT = convertToRGB(idwtYCbCr);
+    // Display decoded image into a jframe
+    JLabel dctLabel = new JLabel(new ImageIcon(decodedImageDCT));
+    JLabel dwtLabel = new JLabel(new ImageIcon(decodedImageDWT));
+    JPanel panel = new JPanel();
+    panel.add("DCT", new JScrollPane(dctLabel));
+    panel.add("DWT", new JScrollPane(dwtLabel));
+    frame.getContentPane().add(panel);
+    frame.pack();
+    frame.setVisible(true);
+    try {
+      Thread.sleep(1200); 
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
 }
